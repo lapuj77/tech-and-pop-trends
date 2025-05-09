@@ -16,19 +16,29 @@ st.title("🚀 Tech & Pop Trends")
 
 @st.cache_data(ttl=900)
 def get_google_trends():
-    import pandas as pd, feedparser
-    # Liste de flux RSS possibles pour la France
+    import pandas as pd, requests, xml.etree.ElementTree as ET
+    # URLs RSS à tester
     rss_urls = [
         "https://trends.google.com/trends/trendingsearches/daily/rss?geo=FR",
         "https://trends.google.com/trends/trendingsearches/daily/rss?hl=fr&geo=FR",
         "https://trends.google.fr/trends/trendingsearches/daily/rss?hl=fr&geo=FR"
     ]
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+    }
     for url in rss_urls:
-        feed = feedparser.parse(url)
-        if feed.entries:
-            titles = [entry.title for entry in feed.entries]
-            return pd.DataFrame(titles, columns=["Trending"])
-    # Aucun flux n'a renvoyé de données : on affiche un message d’erreur
+        try:
+            resp = requests.get(url, headers=headers, timeout=5)
+            if resp.status_code == 200:
+                # Parse le XML
+                root = ET.fromstring(resp.content)
+                items = root.findall(".//item")
+                titles = [item.find("title").text for item in items if item.find("title") is not None]
+                if titles:
+                    return pd.DataFrame(titles, columns=["Trending"])
+        except Exception:
+            continue
+    # Si on arrive ici, aucun flux n'a marché
     st.error("⚠️ Impossible de récupérer les Google Trends via RSS.")
     return pd.DataFrame()
 
