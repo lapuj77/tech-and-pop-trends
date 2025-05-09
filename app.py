@@ -16,8 +16,16 @@ st.title("🚀 Tech & Pop Trends")
 
 @st.cache_data(ttl=900)
 def get_google_trends():
-    pytrends = TrendReq(hl='fr-FR', geo='FR')
-    return pytrends.trending_searches(pn='france')
+    import pandas as pd
+    try:
+        pytrends = TrendReq(hl='fr-FR', geo='FR')
+        df = pytrends.trending_searches(pn='france')
+        return df
+    except Exception as e:
+        # Log dans la console pour debug
+        st.error(f"Impossible de récupérer Google Trends : {e}")
+        # Retourne un DataFrame vide
+        return pd.DataFrame()
 
 @st.cache_data(ttl=900)
 def get_google_news():
@@ -93,7 +101,10 @@ def send_alerts(message: str):
 # Google Trends
 st.header("📈 Google Trends en France")
 trends_df = get_google_trends()
-st.table(trends_df.head(10))
+if trends_df.empty:
+    st.warning("😕 Google Trends est temporairement indisponible.")
+else:
+    st.table(trends_df.head(10))
 
 # Google Actualités
 st.header("📰 Google Actualités Tech & Pop Culture")
