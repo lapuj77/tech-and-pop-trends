@@ -18,17 +18,13 @@ st.title("🚀 Tech & Pop Trends")
 def get_google_trends():
     import pandas as pd
     import feedparser
-    try:
-        pytrends = TrendReq(hl='fr-FR', geo='FR')
-        df = pytrends.trending_searches(pn='france')
-        df.columns = ["Trending"]
-        return df
-    except Exception:
-        st.warning("⚠️ Pytrends indisponible, fallback RSS utilisé.")
-        rss_url = "https://trends.google.fr/trends/trendingsearches/daily/rss?geo=FR"
-        feed = feedparser.parse(rss_url)
-        titles = [entry.title for entry in feed.entries]
-        return pd.DataFrame(titles, columns=["Trending"])
+    # RSS officiel Google Trends – quotidien France
+    rss_url = "https://trends.google.com/trends/trendingsearches/daily/rss?geo=FR"
+    feed = feedparser.parse(rss_url)
+    # On extrait les titres
+    titles = [entry.title for entry in feed.entries]
+    # On renvoie un DataFrame avec une colonne "Trending"
+    return pd.DataFrame(titles, columns=["Trending"])
 
 @st.cache_data(ttl=900)
 def get_google_news():
