@@ -17,15 +17,18 @@ st.title("🚀 Tech & Pop Trends")
 @st.cache_data(ttl=900)
 def get_google_trends():
     import pandas as pd
+    import feedparser
     try:
         pytrends = TrendReq(hl='fr-FR', geo='FR')
         df = pytrends.trending_searches(pn='france')
+        df.columns = ["Trending"]
         return df
-    except Exception as e:
-        # Log dans la console pour debug
-        st.error(f"Impossible de récupérer Google Trends : {e}")
-        # Retourne un DataFrame vide
-        return pd.DataFrame()
+    except Exception:
+        st.warning("⚠️ Pytrends indisponible, fallback RSS utilisé.")
+        rss_url = "https://trends.google.fr/trends/trendingsearches/daily/rss?geo=FR"
+        feed = feedparser.parse(rss_url)
+        titles = [entry.title for entry in feed.entries]
+        return pd.DataFrame(titles, columns=["Trending"])
 
 @st.cache_data(ttl=900)
 def get_google_news():
@@ -99,7 +102,6 @@ def send_alerts(message: str):
 # ─── Affichage du dashboard ───────────────────────────────────────────────
 
 # Google Trends
-@st.cache_data(ttl=900)
 st.header("📈 Google Trends en France")
 trends_df = get_google_trends()
 st.table(trends_df.head(10))
