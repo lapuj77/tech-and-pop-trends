@@ -1,0 +1,8 @@
+streamlit
+pytrends
+feedparser
+tweepy
+praw
+textblob
+pandas
+requests
