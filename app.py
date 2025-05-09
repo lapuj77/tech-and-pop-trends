@@ -16,22 +16,21 @@ st.title("🚀 Tech & Pop Trends")
 
 @st.cache_data(ttl=900)
 def get_google_trends():
-    import pandas as pd, requests, json
-    try:
-        # Appel JSON officiel des daily trends en France (UTC+2 = tz 120)
-        url = "https://trends.google.com/trends/api/dailytrends?hl=fr-FR&tz=120&geo=FR"
-        resp = requests.get(url)
-        # Le contenu renvoyé commence par “)]}’,” qu’il faut retirer
-        raw = resp.text
-        json_str = raw[raw.find("{"):]
-        data = json.loads(json_str)
-        # On prend la première journée et ses recherches
-        searches = data["default"]["trendingSearchesDays"][0]["trendingSearches"]
-        titles = [item["title"]["query"] for item in searches]
-        return pd.DataFrame(titles, columns=["Trending"])
-    except Exception as e:
-        st.error(f"Impossible de récupérer Trends JSON : {e}")
-        return pd.DataFrame()
+    import pandas as pd, feedparser
+    # Liste de flux RSS possibles pour la France
+    rss_urls = [
+        "https://trends.google.com/trends/trendingsearches/daily/rss?geo=FR",
+        "https://trends.google.com/trends/trendingsearches/daily/rss?hl=fr&geo=FR",
+        "https://trends.google.fr/trends/trendingsearches/daily/rss?hl=fr&geo=FR"
+    ]
+    for url in rss_urls:
+        feed = feedparser.parse(url)
+        if feed.entries:
+            titles = [entry.title for entry in feed.entries]
+            return pd.DataFrame(titles, columns=["Trending"])
+    # Aucun flux n'a renvoyé de données : on affiche un message d’erreur
+    st.error("⚠️ Impossible de récupérer les Google Trends via RSS.")
+    return pd.DataFrame()
 
 @st.cache_data(ttl=900)
 def get_google_news():
