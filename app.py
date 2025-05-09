@@ -16,15 +16,22 @@ st.title("🚀 Tech & Pop Trends")
 
 @st.cache_data(ttl=900)
 def get_google_trends():
-    import pandas as pd
-    import feedparser
-    # RSS officiel Google Trends – quotidien France
-    rss_url = "https://trends.google.com/trends/trendingsearches/daily/rss?geo=FR"
-    feed = feedparser.parse(rss_url)
-    # On extrait les titres
-    titles = [entry.title for entry in feed.entries]
-    # On renvoie un DataFrame avec une colonne "Trending"
-    return pd.DataFrame(titles, columns=["Trending"])
+    import pandas as pd, requests, json
+    try:
+        # Appel JSON officiel des daily trends en France (UTC+2 = tz 120)
+        url = "https://trends.google.com/trends/api/dailytrends?hl=fr-FR&tz=120&geo=FR"
+        resp = requests.get(url)
+        # Le contenu renvoyé commence par “)]}’,” qu’il faut retirer
+        raw = resp.text
+        json_str = raw[raw.find("{"):]
+        data = json.loads(json_str)
+        # On prend la première journée et ses recherches
+        searches = data["default"]["trendingSearchesDays"][0]["trendingSearches"]
+        titles = [item["title"]["query"] for item in searches]
+        return pd.DataFrame(titles, columns=["Trending"])
+    except Exception as e:
+        st.error(f"Impossible de récupérer Trends JSON : {e}")
+        return pd.DataFrame()
 
 @st.cache_data(ttl=900)
 def get_google_news():
@@ -97,10 +104,12 @@ def send_alerts(message: str):
 
 # ─── Affichage du dashboard ───────────────────────────────────────────────
 
-# Google Trends
 st.header("📈 Google Trends en France")
 trends_df = get_google_trends()
-st.table(trends_df.head(10))
+if trends_df.empty:
+    st.warning("😕 Aucune tendance disponible pour le moment.")
+else:
+    st.table(trends_df.head(10))
 
 # Google Actualités
 st.header("📰 Google Actualités Tech & Pop Culture")
