@@ -12,6 +12,8 @@ from email.mime.text import MIMEText
 st.set_page_config(page_title="Tech & Pop Trends", layout="wide")
 st.title("🚀 Tech & Pop Trends")
 
+# ─── Fonctions de récupération ────────────────────────────────────────────
+
 @st.cache_data(ttl=900)
 def get_google_trends():
     pytrends = TrendReq(hl='fr-FR', geo='FR')
@@ -19,30 +21,33 @@ def get_google_trends():
 
 @st.cache_data(ttl=900)
 def get_google_news():
-    rss_url = "https://news.google.com/rss/search?q=technologie+OR+pop+culture&hl=fr&gl=FR&ceid=FR:FR"
+    rss_url = (
+        "https://news.google.com/rss/"
+        "search?q=technologie+OR+pop+culture&hl=fr&gl=FR&ceid=FR:FR"
+    )
     feed = feedparser.parse(rss_url)
     return feed.entries
 
-def get_twitter_trends(api):
-    woeid_fr = 23424819
-    trends = api.get_place_trends(id=woeid_fr)
-    hashtags = [t['name'] for t in trends[0]['trends'] if t['name'].startswith('#')]
-    return hashtags[:10]
-
 @st.cache_data(ttl=900)
 def get_twitter_data():
-    consumer_key = st.secrets["twitter"]["consumer_key"]
-    consumer_secret = st.secrets["twitter"]["consumer_secret"]
-    access_token = st.secrets["twitter"]["access_token"]
-    access_secret = st.secrets["twitter"]["access_secret"]
-    auth = tweepy.OAuth1UserHandler(consumer_key, consumer_secret, access_token, access_secret)
+    # récupère les clés dans les Secrets (sinon lève KeyError)
+    auth = tweepy.OAuth1UserHandler(
+        st.secrets["twitter"]["consumer_key"],
+        st.secrets["twitter"]["consumer_secret"],
+        st.secrets["twitter"]["access_token"],
+        st.secrets["twitter"]["access_secret"]
+    )
     api = tweepy.API(auth)
-    tags = get_twitter_trends(api)
+    # top hashtags France
+    trends = api.get_place_trends(id=23424819)[0]["trends"]
+    tags = [t["name"] for t in trends if t["name"].startswith("#")][:10]
+    # sentiment avec TextBlob
     sentiments = {}
     for tag in tags:
-        tweets = api.search_tweets(q=tag, lang='fr', count=50)
-        polarity = sum(TextBlob(tweet.text).sentiment.polarity for tweet in tweets) / len(tweets)
-        sentiments[tag] = polarity
+        tweets = api.search_tweets(q=tag, lang="fr", count=30)
+        if tweets:
+            polarity = sum(TextBlob(t.text).sentiment.polarity for t in tweets) / len(tweets)
+            sentiments[tag] = polarity
     return tags, sentiments
 
 @st.cache_data(ttl=900)
@@ -53,25 +58,69 @@ def get_reddit_data():
         user_agent="techpop_trends"
     )
     posts = []
-    for subreddit in ["technology", "popculture"]:
-        for post in reddit.subreddit(subreddit).hot(limit=10):
-            posts.append({"subreddit": subreddit, "title": post.title, "score": post.score, "comments": post.num_comments})
+    for sub in ["technology", "popculture"]:
+        for post in reddit.subreddit(sub).hot(limit=10):
+            posts.append({
+                "subreddit": sub,
+                "title": post.title,
+                "score": post.score,
+                "comments": post.num_comments
+            })
     return posts
 
-def send_alerts(message):
+def send_alerts(message: str):
+    # Slack
     if "slack" in st.secrets:
-        webhook = st.secrets["slack"]["webhook_url"]
-        requests.post(webhook, json={"text": message})
+        requests.post(st.secrets["slack"]["webhook_url"], json={"text": message})
+    # Email
     if "email" in st.secrets:
-        smtp_server = st.secrets["email"]["smtp_server"]
-        smtp_port = st.secrets["email"]["smtp_port"]
-        smtp_user = st.secrets["email"]["smtp_user"]
-        smtp_password = st.secrets["email"]["smtp_password"]
-        recipient = st.secrets["email"]["recipient"]
         msg = MIMEText(message)
         msg["Subject"] = "Tech & Pop Trends Alert"
-        msg["From"] = smtp_user
-        msg["To"] = recipient
-        with smtplib.SMTP_SSL(smtp_server, smtp_port) as server:
-            server.login(smtp_user, smtp_password)
+        msg["From"] = st.secrets["email"]["smtp_user"]
+        msg["To"] = st.secrets["email"]["recipient"]
+        with smtplib.SMTP_SSL(
+            st.secrets["email"]["smtp_server"],
+            st.secrets["email"]["smtp_port"]
+        ) as server:
+            server.login(
+                st.secrets["email"]["smtp_user"],
+                st.secrets["email"]["smtp_password"]
+            )
             server.send_message(msg)
+
+# ─── Affichage du dashboard ───────────────────────────────────────────────
+
+# Google Trends
+st.header("📈 Google Trends en France")
+trends_df = get_google_trends()
+st.table(trends_df.head(10))
+
+# Google Actualités
+st.header("📰 Google Actualités Tech & Pop Culture")
+for entry in get_google_news()[:10]:
+    st.markdown(f"- [{entry.title}]({entry.link})")
+
+# Twitter (si configuré)
+try:
+    st.header("🐦 Twitter : hashtags & sentiment")
+    tags, sentiments = get_twitter_data()
+    for tag in tags:
+        st.write(f"{tag} → Sentiment moyen : {sentiments.get(tag, 0):.2f}")
+except KeyError:
+    st.warning("⚠️ Twitter non configuré – ajoute tes clés dans les Secrets.")
+
+# Reddit (si configuré)
+try:
+    st.header("👽 Reddit : posts populaires")
+    reddit_df = pd.DataFrame(get_reddit_data())
+    st.dataframe(reddit_df)
+except KeyError:
+    st.warning("⚠️ Reddit non configuré – ajoute tes clés dans les Secrets.")
+
+# Bouton d’alerte manuelle
+if st.button("🔔 Envoyer alerte e-mail/Slack"):
+    top5 = trends_df.head(5)[0].tolist()
+    send_alerts("Nouvelles tendances : " + ", ".join(top5))
+    st.success("Alertes envoyées ! 🎉")
+
+st.info("Actualisation automatique toutes les 15 minutes.")
