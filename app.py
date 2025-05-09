@@ -99,12 +99,10 @@ def send_alerts(message: str):
 # ─── Affichage du dashboard ───────────────────────────────────────────────
 
 # Google Trends
+@st.cache_data(ttl=900)
 st.header("📈 Google Trends en France")
 trends_df = get_google_trends()
-if trends_df.empty:
-    st.warning("😕 Google Trends est temporairement indisponible.")
-else:
-    st.table(trends_df.head(10))
+st.table(trends_df.head(10))
 
 # Google Actualités
 st.header("📰 Google Actualités Tech & Pop Culture")
