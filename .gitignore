@@ -1,0 +1,10 @@
+# Les exports d'audience sont des données internes : elles restent en local.
+data/
+*.zip
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.streamlit/secrets.toml
+.DS_Store

@@ -1,8 +1,3 @@
-streamlit
-pytrends
-feedparser
-tweepy
-praw
-textblob
-pandas
-requests
+streamlit>=1.30
+pandas>=2.0
+altair>=5.0
