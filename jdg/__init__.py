@@ -14,6 +14,19 @@ from .parsers import (
     section,
     to_number,
 )
+from .flux import Collecte, FLUX_PAR_DEFAUT, collecte, collecte_hors_ligne, lire_flux
+from .palettes import (
+    FAMILLES,
+    MARQUEURS,
+    Note,
+    ProfilSucces,
+    angles_a_retravailler,
+    note_sujet,
+    palette_chaude,
+    palette_froide,
+    profil_succes,
+    sujets_orphelins,
+)
 from .metrics import (
     RELANCES_MAX,
     SEUIL_CARTON,
@@ -33,7 +46,22 @@ from .metrics import (
 )
 
 __all__ = [
+    "Collecte",
     "ExportGSC",
+    "FAMILLES",
+    "FLUX_PAR_DEFAUT",
+    "MARQUEURS",
+    "Note",
+    "ProfilSucces",
+    "angles_a_retravailler",
+    "collecte",
+    "collecte_hors_ligne",
+    "lire_flux",
+    "note_sujet",
+    "palette_chaude",
+    "palette_froide",
+    "profil_succes",
+    "sujets_orphelins",
     "RELANCES_MAX",
     "Relance",
     "SEUIL_CARTON",

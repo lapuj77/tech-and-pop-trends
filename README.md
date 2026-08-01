@@ -53,6 +53,33 @@ lignes**. Une relance absente du haut de classement passe alors inaperçue, et
 l'article apparaît à tort comme jamais ressorti. Deux colonnes suffisent :
 l'URL de départ et l'URL d'arrivée.
 
+## Les trois viviers de sujets
+
+L'onglet **Viviers** alimente la conférence de rédaction. Les trois listes
+reposent sur un même profil de succès, recalculé à chaque chargement depuis
+l'historique du site — jamais sur des bonnes pratiques générales. Ce que
+l'outil juge prometteur est toujours ce qui a fonctionné **ici**.
+
+- **Froid** — l'archive prouvée : sujets à forte audience passée, endormis
+  depuis assez longtemps pour reprendre, écartés dès qu'ils ont épuisé leurs
+  relances, remontés en priorité quand leur saison approche.
+- **Chaud** — l'actualité du moment relevée sur Google Trends et Google
+  Actualités, puis **classée par ressemblance aux succès du site** plutôt que
+  par fraîcheur. Chaque ligne indique pourquoi elle est là, à quel succès passé
+  elle ressemble, et ce qu'il manque au titre.
+- **Nouveaux** — les écarts : familles à fort rendement mais faible part de la
+  production, sujets à demande démontrée chez un concurrent et jamais traités
+  ici, et articles récents à reformuler.
+
+Un rendement faible ne condamne pas une famille : elle peut servir l'identité
+du site ou son audience fidèle. Le tableau dit d'où viennent les cartons, pas
+ce qu'il faut cesser d'écrire.
+
+Le vivier chaud a besoin d'un accès réseau à `trends.google.com` et
+`news.google.com`. Quand ils sont bloqués, l'onglet affiche l'échec au lieu de
+laisser croire qu'il n'y a pas d'actualité — `jdg.flux.collecte_hors_ligne`
+permet de travailler sur des flux enregistrés.
+
 ## Organisation du code
 
 | Fichier | Rôle |
@@ -60,6 +87,8 @@ l'URL de départ et l'URL d'arrivée.
 | `app.py` | interface Streamlit |
 | `jdg/parsers.py` | lecture des exports, nombres au format français, URLs |
 | `jdg/metrics.py` | mesures : séries, stock/flux, relances, cartons, réservoir |
+| `jdg/palettes.py` | profil de succès, notation d'un sujet, les trois viviers |
+| `jdg/flux.py` | lecture des flux RSS d'actualité (bibliothèque standard seule) |
 
 Les fonctions de `jdg/metrics.py` s'utilisent aussi seules, dans un notebook ou
 un script :

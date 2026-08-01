@@ -18,21 +18,28 @@ import pandas as pd
 import streamlit as st
 
 from jdg import (
+    FLUX_PAR_DEFAUT,
     RELANCES_MAX,
     SEUIL_CARTON,
+    angles_a_retravailler,
     charger_articles,
     charger_gsc,
     charger_redirections,
+    collecte,
     compare_sites,
     concentration,
     detecte_relances,
     evolution_annuelle,
+    palette_chaude,
+    palette_froide,
     poids_des_sections,
     profil_cartons,
+    profil_succes,
     reservoir,
     serie_mensuelle,
     stock_et_flux,
     sujets_communs,
+    sujets_orphelins,
     synthese_relances,
 )
 
@@ -145,7 +152,8 @@ for export in exports:
     par_canal.setdefault(export.canal, []).append(export)
 
 onglets = st.tabs(
-    ["Vue d'ensemble", "Cartons", "Relances", "Réservoir", "Concurrent", "Méthode"]
+    ["Vue d'ensemble", "Cartons", "Relances", "Réservoir", "Concurrent",
+     "Viviers", "Méthode"]
 )
 
 
@@ -610,10 +618,159 @@ with onglets[4]:
 
 
 # --------------------------------------------------------------------------
-# Méthode
+# Viviers de sujets
 # --------------------------------------------------------------------------
 
 with onglets[5]:
+    if articles.empty:
+        st.info("Cet onglet a besoin de l'export d'articles du CMS.")
+    else:
+        profil = profil_succes(articles)
+
+        st.caption(
+            f"Profil calculé sur {len(articles):,} articles — ".replace(",", " ")
+            + f"moyenne du site : {profil.taux_moyen:.2f} carton pour 1 000 articles. "
+            "Tout ce qui suit est mesuré ici, sur ce site, et non repris de bonnes "
+            "pratiques générales."
+        )
+
+        froide, chaude, neufs = st.tabs(
+            ["Froid — l'archive", "Chaud — l'actualité", "Nouveaux — les écarts"]
+        )
+
+        # ---- froid ----
+        with froide:
+            st.subheader("Que ressortir")
+            st.caption(
+                "Sujets à audience prouvée, endormis depuis assez longtemps pour "
+                "reprendre, et écartés dès qu'ils ont épuisé leurs relances."
+            )
+            avec_pages = [e for e in exports if not e.pages.empty]
+            relances = detecte_relances(
+                max(avec_pages, key=lambda e: len(e.pages)).pages
+            ) if avec_pages else []
+            if redirections.empty:
+                st.warning(
+                    "Sans table de redirections, les relances déjà faites sont "
+                    "estimées depuis les exports Search Console, qui sont plafonnés. "
+                    "Un sujet peut donc apparaître comme jamais ressorti alors qu'il "
+                    "est épuisé — vérifie avant de le programmer."
+                )
+            gauche, droite = st.columns(2)
+            seuil_froid = gauche.slider("Audience minimale d'origine", 50_000, 1_000_000, 200_000, 25_000)
+            sommeil = droite.slider("Sommeil minimal (jours)", 30, 730, 180, 30)
+            froid = palette_froide(
+                articles, profil, relances, pd.Timestamp.today(),
+                seuil_froid, sommeil, redirections if not redirections.empty else None,
+            )
+            if froid.empty:
+                st.write("Aucun sujet ne remplit ces conditions.")
+            else:
+                st.dataframe(
+                    froid.head(40).style.format(
+                        {"vues_prouvées": "{:,.0f}", "score": "{:,.0f}"}
+                    ),
+                    width="stretch", hide_index=True,
+                )
+                st.download_button(
+                    "Télécharger (CSV)", froid.to_csv(index=False).encode("utf-8-sig"),
+                    "vivier_froid.csv", "text/csv",
+                )
+
+        # ---- chaud ----
+        with chaude:
+            st.subheader("Ce qui bouge maintenant, filtré par ton profil")
+            st.caption(
+                "Chaque sujet d'actualité est noté selon sa ressemblance aux succès "
+                "passés du site, la famille à laquelle il appartient et la forme de "
+                "son titre. L'ordre n'est pas celui de l'actualité, c'est celui du "
+                "potentiel ici."
+            )
+            if st.button("Relever les flux"):
+                with st.spinner("Lecture des flux…"):
+                    st.session_state["collecte"] = collecte()
+
+            releve = st.session_state.get("collecte")
+            if releve is None:
+                st.info(
+                    "Clique sur « Relever les flux » pour interroger Google Trends "
+                    "et Google Actualités.\n\n"
+                    "Flux interrogés : " + ", ".join(FLUX_PAR_DEFAUT)
+                )
+            else:
+                if releve.echecs:
+                    st.error(
+                        "Flux injoignables — souvent une restriction réseau, pas une "
+                        "absence d'actualité :\n"
+                        + "\n".join(f"- **{nom}** : {raison}" for nom, raison in releve.echecs)
+                    )
+                if releve.items:
+                    chaud = palette_chaude(releve.items, profil)
+                    st.caption(f"{len(releve.items)} sujets relevés, classés par potentiel.")
+                    st.dataframe(
+                        chaud.head(40)[
+                            ["score", "sujet", "famille", "pourquoi", "à_faire", "source"]
+                        ].style.format({"score": "{:,.0f}"}),
+                        width="stretch", hide_index=True,
+                    )
+
+        # ---- nouveaux ----
+        with neufs:
+            st.subheader("Où va la production, et ce qu'elle rapporte")
+            st.caption(
+                "Un rendement faible ne condamne pas une famille : elle peut servir "
+                "l'identité du site ou son audience fidèle. Ce tableau dit seulement "
+                "d'où viennent les cartons, et d'où ils ne viennent pas."
+            )
+            repartition = profil.familles_sous_exploitees()
+            if not repartition.empty:
+                st.dataframe(
+                    repartition.style.format({
+                        "part_production_%": "{:.1f} %",
+                        "taux_pour_1000": "{:.2f} ‰",
+                        "rendement_vs_moyenne": "×{:.1f}",
+                    }),
+                    width="stretch", hide_index=True,
+                )
+
+            st.subheader("Sujets à demande prouvée, jamais traités ici")
+            if concurrent.empty:
+                st.info(
+                    "Dépose l'export d'articles d'un concurrent dans la barre "
+                    "latérale pour activer cette liste."
+                )
+            else:
+                orphelins = sujets_orphelins(articles, concurrent)
+                if orphelins.empty:
+                    st.write("Aucun sujet orphelin détecté au-dessus du seuil.")
+                else:
+                    st.dataframe(
+                        orphelins.style.format({
+                            "leurs_vues": "{:,.0f}", "recouvrement_max": "{:.0%}",
+                        }),
+                        width="stretch", hide_index=True,
+                    )
+
+            st.subheader("Sujets récents à reformuler")
+            st.caption(
+                "Mêmes sujets, autre angle : ces articles appartiennent à une famille "
+                "identifiée mais n'emploient aucun des procédés qui fonctionnent ici."
+            )
+            a_reprendre = angles_a_retravailler(articles, profil)
+            if a_reprendre.empty:
+                st.write("Rien à signaler.")
+            else:
+                st.dataframe(
+                    a_reprendre.style.format({"vues": "{:,.0f}"}),
+                    width="stretch", hide_index=True,
+                )
+
+
+# --------------------------------------------------------------------------
+# Méthode
+# --------------------------------------------------------------------------
+
+with onglets[6]:
     st.markdown(
         f"""
 ### Ce que mesure chaque page
