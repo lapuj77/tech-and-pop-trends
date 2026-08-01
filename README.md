@@ -42,6 +42,30 @@ L'export « Auteur_Tous », un fichier par année. Colonnes attendues :
 
 Le même format sert pour un site concurrent, dans l'emplacement dédié.
 
+### Marfeel, un fichier par canal
+
+Marfeel applique un **filtre** avant l'export : dans l'écran de rapport, filtre
+*Traffic source*, **une seule case cochée à la fois**, plage de dates la plus
+large possible, puis export. Au-delà de quelques mois, Marfeel bascule
+automatiquement en semaines — c'est le bon grain pour une tendance annuelle.
+
+⚠️ **Le CSV ne contient aucune colonne indiquant le canal filtré.**
+L'information n'existe que dans le nom du fichier. Nomme-les donc selon la
+convention `<site><canal><année>.csv` :
+
+```
+jdgdiscover2026.csv    pcdirect2025.csv    jdg-dark-social-2026.csv
+```
+
+Sites reconnus : `jdg`, `pc`. Canaux reconnus : `discover`, `google` ou
+`search`, `direct`, `news`, `dark`, `bing`. Séparateurs et casse libres. Un
+fichier non reconnu est rangé sous « inconnu » et l'application le signale.
+
+Ne mélange pas les granularités sans y penser : un export quotidien d'un mois
+et un export hebdomadaire de l'année couvrent les mêmes journées. L'application
+détecte la granularité de chaque fichier et n'en retient qu'une pour les
+totaux — celle qui couvre la plus longue période.
+
 ### Table de redirections — optionnel mais décisif
 
 Chaque relance d'article laisse une redirection de l'ancienne URL vers la
@@ -52,6 +76,21 @@ les exports Search Console — qui sont **plafonnés à quelques centaines de
 lignes**. Une relance absente du haut de classement passe alors inaperçue, et
 l'article apparaît à tort comme jamais ressorti. Deux colonnes suffisent :
 l'URL de départ et l'URL d'arrivée.
+
+## L'onglet Canaux
+
+C'est le seul endroit qui voit le trafic **hors Google** — direct, réseaux
+sociaux, referrers. Quatre lectures :
+
+- **D'où vient le trafic**, site par site, avec les pages par visiteur et
+  l'engagement. Ce ratio sépare l'acquisition de la fidélité : au-dessus de 5 on
+  lit un lectorat qui revient, autour de 1,5 du trafic de passage.
+- **Comparer deux périodes** de même longueur, canal par canal.
+- **Un canal, les sites superposés** — la courbe qui montre le mieux un écart
+  qui se creuse ou se referme entre deux sites.
+- **L'audience qui revient d'elle-même**, suivie en visiteurs et en engagement,
+  jamais en pages vues seules : un seul gros succès suffirait à les faire varier
+  sans qu'un seul lecteur fidèle de plus soit arrivé.
 
 ## Les trois viviers de sujets
 
@@ -87,6 +126,7 @@ permet de travailler sur des flux enregistrés.
 | `app.py` | interface Streamlit |
 | `jdg/parsers.py` | lecture des exports, nombres au format français, URLs |
 | `jdg/metrics.py` | mesures : séries, stock/flux, relances, cartons, réservoir |
+| `jdg/marfeel.py` | exports par canal, mix, comparaison de périodes, audience fidèle |
 | `jdg/palettes.py` | profil de succès, notation d'un sujet, les trois viviers |
 | `jdg/flux.py` | lecture des flux RSS d'actualité (bibliothèque standard seule) |
 

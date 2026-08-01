@@ -19,17 +19,22 @@ import streamlit as st
 
 from jdg import (
     FLUX_PAR_DEFAUT,
+    audience_fidele,
     RELANCES_MAX,
     SEUIL_CARTON,
     angles_a_retravailler,
     charger_articles,
     charger_gsc,
+    charger_marfeel,
     charger_redirections,
     collecte,
+    compare_periodes,
     compare_sites,
     concentration,
     detecte_relances,
     evolution_annuelle,
+    granularite_dominante,
+    mix_canaux,
     palette_chaude,
     palette_froide,
     poids_des_sections,
@@ -37,6 +42,7 @@ from jdg import (
     profil_succes,
     reservoir,
     serie_mensuelle,
+    series_hebdomadaires,
     stock_et_flux,
     sujets_communs,
     sujets_orphelins,
@@ -69,6 +75,11 @@ def _charge_gsc(chemins: tuple[str, ...]):
         if not (export.dates.empty and export.pages.empty):
             exports.append(export)
     return exports
+
+
+@st.cache_data(show_spinner=False)
+def _charge_marfeel(chemins: tuple[str, ...]) -> pd.DataFrame:
+    return charger_marfeel(*chemins) if chemins else pd.DataFrame()
 
 
 @st.cache_data(show_spinner=False)
@@ -108,6 +119,13 @@ depots_concurrent = st.sidebar.file_uploader(
     type=["csv"],
     accept_multiple_files=True,
 )
+depots_marfeel = st.sidebar.file_uploader(
+    "Exports Marfeel par canal (.csv)",
+    type=["csv"],
+    accept_multiple_files=True,
+    help="Un fichier par canal. Le canal se lit dans le NOM du fichier "
+         "— nomme-les jdgdiscover2026.csv, pcdirect2025.csv…",
+)
 depot_redirections = st.sidebar.file_uploader(
     "Table de redirections (.csv) — optionnel",
     type=["csv"],
@@ -125,9 +143,16 @@ chemins_concurrent = tuple(
     str(_fichier_temporaire(f)) for f in depots_concurrent
 ) or tuple(_depuis_dossier(["concurrent*.csv"]))
 
+chemins_marfeel = tuple(
+    [str(_fichier_temporaire(f)) for f in depots_marfeel]
+    or _depuis_dossier(["*discover*.csv", "*direct*.csv", "*dark*.csv",
+                        "*google*.csv", "*news*.csv"])
+)
+
 exports = _charge_gsc(chemins_gsc)
 articles = _charge_articles(chemins_articles)
 concurrent = _charge_articles(chemins_concurrent)
+marfeel = _charge_marfeel(chemins_marfeel)
 redirections = (
     charger_redirections(_fichier_temporaire(depot_redirections))
     if depot_redirections
@@ -136,13 +161,15 @@ redirections = (
 
 st.title("Audience éditoriale")
 
-if not exports and articles.empty:
+if not exports and articles.empty and marfeel.empty:
     st.info(
         "Dépose au moins un export pour commencer.\n\n"
         "**Search Console** — Performances → *Résultats de recherche* puis "
         "*Discover*, plage de 16 mois, bouton Exporter, format CSV. "
         "Un export par mois donne une lecture bien plus fine.\n\n"
-        "**Articles** — l'export « Auteur_Tous » du CMS, un fichier par année."
+        "**Articles** — l'export « Auteur_Tous » du CMS, un fichier par année.\n\n"
+        "**Marfeel** — un export par source d'acquisition, le canal étant "
+        "déduit du nom du fichier."
     )
     st.stop()
 
@@ -152,8 +179,8 @@ for export in exports:
     par_canal.setdefault(export.canal, []).append(export)
 
 onglets = st.tabs(
-    ["Vue d'ensemble", "Cartons", "Relances", "Réservoir", "Concurrent",
-     "Viviers", "Méthode"]
+    ["Vue d'ensemble", "Canaux", "Cartons", "Relances", "Réservoir",
+     "Concurrent", "Viviers", "Méthode"]
 )
 
 
@@ -284,10 +311,131 @@ with onglets[0]:
 
 
 # --------------------------------------------------------------------------
-# Cartons
+# Canaux d'acquisition
 # --------------------------------------------------------------------------
 
 with onglets[1]:
+    if marfeel.empty:
+        st.info(
+            "Cet onglet a besoin des exports Marfeel filtrés par source.\n\n"
+            "Dans Marfeel : filtre **Traffic source**, une seule case cochée à la "
+            "fois, plage la plus large possible, puis export. Le canal n'apparaît "
+            "nulle part dans le CSV — **il est déduit du nom du fichier**, alors "
+            "nomme-les `jdgdiscover2026.csv`, `pcdirect2025.csv`, etc."
+        )
+    else:
+        grain = granularite_dominante(marfeel)
+        sites = sorted(marfeel["site"].unique())
+        st.caption(
+            f"{marfeel['fichier'].nunique()} fichiers · "
+            f"{', '.join(sites)} · granularité retenue : **{grain}**. "
+            "Les fichiers d'une autre granularité sont écartés des totaux — les "
+            "additionner compterait les mêmes journées deux fois."
+        )
+        if "inconnu" in sites or "inconnu" in marfeel["canal"].unique():
+            st.warning(
+                "Certains fichiers n'ont pas pu être rattachés à un site ou à un "
+                "canal d'après leur nom. Renomme-les selon la convention "
+                "`<site><canal><année>.csv` — sinon leurs données sont regroupées "
+                "sous « inconnu » et faussent les répartitions."
+            )
+
+        st.subheader("D'où vient le trafic")
+        colonnes = st.columns(len(sites))
+        for colonne, site in zip(colonnes, sites):
+            mix = mix_canaux(marfeel, site)
+            if mix.empty:
+                continue
+            colonne.markdown(f"**{site}**")
+            colonne.dataframe(
+                mix[["canal", "pages_vues", "part_%", "pages_par_visiteur", "engagement_s"]]
+                .style.format({
+                    "pages_vues": "{:,.0f}", "part_%": "{:.1f} %",
+                    "pages_par_visiteur": "{:.2f}", "engagement_s": "{:.0f} s",
+                }),
+                width="stretch", hide_index=True,
+            )
+        st.caption(
+            "Le nombre de pages par visiteur sépare l'acquisition de la fidélité : "
+            "au-dessus de 5, on lit un lectorat qui revient ; autour de 1,5, on lit "
+            "du trafic de passage."
+        )
+
+        st.subheader("Comparer deux périodes")
+        st.caption(
+            "Prends deux périodes de même longueur, sinon la comparaison n'a pas "
+            "de sens. Par défaut : les sept premiers mois de chaque année."
+        )
+        dates = sorted(marfeel["date"].unique())
+        c1, c2, c3, c4 = st.columns(4)
+        a1 = c1.text_input("Période A, début", dates[0])
+        a2 = c2.text_input("Période A, fin", min(d for d in dates if d >= dates[0][:4] + "-07-21")
+                           if any(d >= dates[0][:4] + "-07-21" for d in dates) else dates[len(dates)//2])
+        b1 = c3.text_input("Période B, début", dates[len(dates)//2])
+        b2 = c4.text_input("Période B, fin", dates[-1])
+        comparaison = compare_periodes(marfeel, (a1, a2), (b1, b2))
+        if comparaison.empty:
+            st.write("Aucune donnée sur ces périodes.")
+        else:
+            for site in sites:
+                sous = comparaison[comparaison["site"] == site]
+                if sous.empty:
+                    continue
+                st.markdown(f"**{site}**")
+                st.dataframe(
+                    sous[["canal", "période_A", "période_B", "evolution_%"]]
+                    .sort_values("evolution_%", ascending=False)
+                    .style.format({
+                        "période_A": "{:,.0f}", "période_B": "{:,.0f}",
+                        "evolution_%": "{:+.0f} %",
+                    }),
+                    width="stretch", hide_index=True,
+                )
+
+        st.subheader("Un canal, les sites superposés")
+        canaux = sorted(c for c in marfeel["canal"].unique() if c != "inconnu")
+        choix = st.selectbox("Canal", canaux,
+                             index=canaux.index("Discover") if "Discover" in canaux else 0)
+        serie = series_hebdomadaires(marfeel, choix)
+        if not serie.empty:
+            long = serie.melt("date", var_name="site", value_name="pages_vues").dropna()
+            st.altair_chart(
+                alt.Chart(long)
+                .mark_line(strokeWidth=2)
+                .encode(
+                    x=alt.X("date:T", title=None),
+                    y=alt.Y("pages_vues:Q", title="pages vues", axis=alt.Axis(format="~s")),
+                    color=alt.Color("site:N", title=None),
+                    tooltip=["date:T", "site:N", alt.Tooltip("pages_vues:Q", format=",.0f")],
+                )
+                .properties(height=380),
+                width="stretch",
+            )
+
+        st.subheader("L'audience qui revient d'elle-même")
+        st.caption(
+            "Le canal direct est le seul qui mesure un actif plutôt qu'une "
+            "acquisition. On le suit en visiteurs et en engagement — jamais en "
+            "pages vues seules, qu'un seul gros succès suffit à faire varier."
+        )
+        fidele = audience_fidele(marfeel)
+        if fidele.empty:
+            st.write("Aucun fichier « direct » chargé.")
+        else:
+            st.dataframe(
+                fidele[["site", "annee", "visiteurs_par_periode", "engagement_s", "periodes"]]
+                .style.format({
+                    "visiteurs_par_periode": "{:,.0f}", "engagement_s": "{:.0f} s",
+                }),
+                width="stretch", hide_index=True,
+            )
+
+
+# --------------------------------------------------------------------------
+# Cartons
+# --------------------------------------------------------------------------
+
+with onglets[2]:
     if articles.empty:
         st.info("Cet onglet a besoin de l'export d'articles du CMS.")
     else:
@@ -372,7 +520,7 @@ with onglets[1]:
 # Relances
 # --------------------------------------------------------------------------
 
-with onglets[2]:
+with onglets[3]:
     avec_pages = [e for e in exports if not e.pages.empty]
     if not avec_pages:
         st.info("Cet onglet a besoin d'un export Search Console contenant l'onglet Pages.")
@@ -481,7 +629,7 @@ with onglets[2]:
 # Réservoir
 # --------------------------------------------------------------------------
 
-with onglets[3]:
+with onglets[4]:
     avec_pages = [e for e in exports if not e.pages.empty]
     if articles.empty or not avec_pages:
         st.info("Cet onglet a besoin de l'export d'articles et d'un export Search Console.")
@@ -541,7 +689,7 @@ with onglets[3]:
 # Concurrent
 # --------------------------------------------------------------------------
 
-with onglets[4]:
+with onglets[5]:
     if articles.empty or concurrent.empty:
         st.info(
             "Dépose l'export d'articles d'un concurrent dans la barre latérale "
@@ -621,7 +769,7 @@ with onglets[4]:
 # Viviers de sujets
 # --------------------------------------------------------------------------
 
-with onglets[5]:
+with onglets[6]:
     if articles.empty:
         st.info("Cet onglet a besoin de l'export d'articles du CMS.")
     else:
@@ -770,7 +918,7 @@ with onglets[5]:
 # Méthode
 # --------------------------------------------------------------------------
 
-with onglets[6]:
+with onglets[7]:
     st.markdown(
         f"""
 ### Ce que mesure chaque page

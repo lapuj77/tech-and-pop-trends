@@ -14,6 +14,17 @@ from .parsers import (
     section,
     to_number,
 )
+from .marfeel import (
+    CANAUX,
+    SITES,
+    audience_fidele,
+    charger_marfeel,
+    compare_periodes,
+    devine_origine,
+    granularite_dominante,
+    mix_canaux,
+    series_hebdomadaires,
+)
 from .flux import Collecte, FLUX_PAR_DEFAUT, collecte, collecte_hors_ligne, lire_flux
 from .palettes import (
     FAMILLES,
@@ -46,7 +57,16 @@ from .metrics import (
 )
 
 __all__ = [
+    "CANAUX",
     "Collecte",
+    "SITES",
+    "audience_fidele",
+    "charger_marfeel",
+    "compare_periodes",
+    "devine_origine",
+    "granularite_dominante",
+    "mix_canaux",
+    "series_hebdomadaires",
     "ExportGSC",
     "FAMILLES",
     "FLUX_PAR_DEFAUT",
