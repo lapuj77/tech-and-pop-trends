@@ -165,8 +165,17 @@ Tous deux se règlent dans l'interface ou en tête de `jdg/metrics.py`.
   donc mécaniquement sous-estimé face à un article ancien, et les comparaisons
   d'une année sur l'autre exagèrent les baisses. Les données Search Console,
   bornées dans le temps, ne souffrent pas de ce biais.
-- Aucune visibilité sur les canaux hors Google : direct, réseaux sociaux,
-  referrals.
+- Les canaux hors Google ne sont visibles que par les exports Marfeel, dont le
+  canal se déduit du nom de fichier. Une erreur de nommage se voit dans les
+  répartitions, pas dans les données elles-mêmes.
+- Les visiteurs uniques ne s'additionnent pas d'une période à l'autre : une
+  personne venue trois semaines de suite compte une fois par semaine et une
+  seule sur le mois. Les totaux de période affichés par Marfeel sont
+  dédoublonnés, la somme des lignes ne l'est pas.
+- Les deux sites d'une comparaison tournent en général sur des infrastructures
+  distinctes : les niveaux absolus se comparent avec prudence, les évolutions
+  dans le temps — chaque site comparé à lui-même — sont fiables.
 - Pas de détection en temps réel : la Search Console est décalée de deux à
-  trois jours. Repérer un article qui décolle le jour même demande une source
-  d'audience temps réel — API Marfeel, GA4 ou logs serveur.
+  trois jours et les exports Marfeel sont manuels. Repérer un article qui
+  décolle le jour même demande une source d'audience en direct — API Marfeel,
+  GA4 ou logs serveur.
