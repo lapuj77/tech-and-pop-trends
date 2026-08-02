@@ -20,6 +20,8 @@ import streamlit as st
 
 from jdg import (
     FLUX_PAR_DEFAUT,
+    MODELE_PAR_DEFAUT,
+    VeilleIndisponible,
     audience_fidele,
     RELANCES_MAX,
     SEUIL_CARTON,
@@ -28,6 +30,7 @@ from jdg import (
     charger_gsc,
     charger_marfeel,
     charger_redirections,
+    cherche_sujets,
     collecte,
     compare_periodes,
     compare_sites,
@@ -146,6 +149,22 @@ depot_redirections = st.sidebar.file_uploader(
     "Table de redirections (.csv) — optionnel",
     type=["csv"],
     help="Sans elle, l'historique des relances reste une estimation.",
+)
+
+st.sidebar.divider()
+st.sidebar.subheader("Veille par l'API Claude")
+st.sidebar.caption(
+    "Nécessaire au seul onglet **Viviers → Veille**. Tout le reste de l'outil "
+    "fonctionne sans. La clé n'est pas enregistrée : elle vit le temps de la "
+    "session, et rien de tes données d'audience n'est envoyé — seuls les titres "
+    "et le profil de succès partent dans la requête."
+)
+cle_api = st.sidebar.text_input(
+    "Clé d'API Anthropic",
+    type="password",
+    placeholder="sk-ant-…",
+    help="À créer sur console.anthropic.com. Facturée à l'usage, "
+         "quelques centimes par relevé.",
 )
 
 chemins_gsc = tuple(
@@ -798,9 +817,9 @@ with onglets[6]:
             "pratiques générales."
         )
 
-        froide, chaude, neufs, formuler = st.tabs(
-            ["Froid — l'archive", "Chaud — l'actualité", "Nouveaux — les écarts",
-             "Formuler — les titres"]
+        froide, chaude, veille, neufs, formuler = st.tabs(
+            ["Froid — l'archive", "Chaud — l'actualité", "Veille — par Claude",
+             "Nouveaux — les écarts", "Formuler — les titres"]
         )
 
         # ---- froid ----
@@ -878,6 +897,118 @@ with onglets[6]:
                         ].style.format({"score": "{:,.0f}"}),
                         width="stretch", hide_index=True,
                     )
+
+        # ---- veille par l'API ----
+        with veille:
+            st.subheader("Claude cherche, tes données classent")
+            st.caption(
+                "Claude interroge le web en direct et rapporte des sujets. "
+                "Chacun est ensuite repassé par le **même profil de succès** que "
+                "les autres viviers : la famille, les procédés de titre et la "
+                "ressemblance aux cartons passés sont mesurés sur ton historique. "
+                "L'ordre affiché est donc celui du site, pas celui du modèle."
+            )
+
+            reglages, action = st.columns([3, 2])
+            consigne = reglages.text_area(
+                "Consigne du jour (facultatif)",
+                placeholder="Priorité aux sorties de jeux et aux annonces "
+                            "matériel. Éviter l'IA cette semaine, déjà trois "
+                            "articles.",
+                height=110,
+            )
+            combien = action.slider("Nombre de sujets", 5, 25, 12)
+            recherches_max = action.slider("Recherches web maximum", 4, 25, 12)
+            action.caption(
+                f"Coût : environ 1 ¢ par recherche, plus les jetons. "
+                f"Un relevé de {recherches_max} recherches revient à quelques "
+                "dizaines de centimes."
+            )
+
+            if st.button("Lancer la veille", type="primary"):
+                if not cle_api:
+                    st.error(
+                        "Renseigne la clé d'API dans la barre latérale — "
+                        "section « Veille par l'API Claude »."
+                    )
+                else:
+                    with st.spinner("Claude cherche sur le web… compter une à deux minutes."):
+                        try:
+                            st.session_state["veille"] = cherche_sujets(
+                                profil, articles, cle_api=cle_api, n=combien,
+                                consigne=consigne, max_recherches=recherches_max,
+                            )
+                            st.session_state.pop("veille_erreur", None)
+                        except VeilleIndisponible as erreur:
+                            st.session_state["veille_erreur"] = str(erreur)
+                        except Exception as erreur:      # réseau, quota, clé invalide
+                            st.session_state["veille_erreur"] = (
+                                f"{type(erreur).__name__} : {erreur}"
+                            )
+
+            if st.session_state.get("veille_erreur"):
+                st.error(st.session_state["veille_erreur"])
+
+            resultat = st.session_state.get("veille")
+            if resultat is None:
+                st.info(
+                    "Rien de relevé pour l'instant.\n\n"
+                    f"Modèle utilisé : `{MODELE_PAR_DEFAUT}`, avec la recherche web "
+                    "localisée en France. Ce qui part dans la requête : le profil "
+                    "de succès mesuré, les plus gros titres du site et les derniers "
+                    "publiés. **Aucun chiffre d'audience détaillé, aucune donnée "
+                    "du concurrent.**"
+                )
+            elif resultat.table.empty:
+                st.warning("Le relevé n'a produit aucune proposition exploitable.")
+            else:
+                if resultat.remarque:
+                    st.info(resultat.remarque)
+                st.caption(
+                    f"{len(resultat.table)} sujets · {resultat.recherches} recherches web · "
+                    f"{resultat.jetons_entree + resultat.jetons_sortie:,} jetons · "
+                    f"coût estimé {resultat.cout:.2f} $".replace(",", " ")
+                )
+
+                for _, ligne in resultat.table.iterrows():
+                    with st.container(border=True):
+                        st.markdown(f"**{ligne['titre_proposé']}**")
+                        st.write(ligne["sujet"])
+                        alerte = ""
+                        if ligne["déjà_traité"] >= 0.3:
+                            alerte = (f"  ·  ⚠️ ressemble à {ligne['déjà_traité']:.0%} "
+                                      "à un article déjà publié")
+                        st.caption(
+                            f"{ligne['fraîcheur']}  ·  famille mesurée : "
+                            f"{ligne['famille_mesurée']}  ·  "
+                            f"{ligne['caractères']} caractères{alerte}"
+                        )
+                        st.caption(f"**Pourquoi maintenant** — {ligne['pourquoi_maintenant']}")
+                        st.caption(f"**Angle** — {ligne['angle']}")
+                        st.caption(f"**Ce que dit ton historique** — {ligne['pourquoi_ça_peut_marcher']}")
+                        if ligne["à_corriger"]:
+                            st.caption(f"**À corriger sur le titre** — {ligne['à_corriger']}")
+                        if ligne["risque"]:
+                            st.caption(f"**Risque** — {ligne['risque']}")
+                        if ligne["sources"]:
+                            st.caption("Sources : " + "  ·  ".join(
+                                f"[{i + 1}]({u})"
+                                for i, u in enumerate(ligne["sources"].split())
+                            ))
+
+                st.download_button(
+                    "Télécharger le relevé (CSV)",
+                    resultat.table.to_csv(index=False).encode("utf-8-sig"),
+                    "veille_claude.csv", "text/csv",
+                )
+                with st.expander(f"Les {len(resultat.sources)} pages réellement consultées"):
+                    st.caption(
+                        "Relevé depuis les résultats de recherche, pas depuis ce "
+                        "que le modèle affirme avoir lu. Une source citée plus haut "
+                        "et absente d'ici n'a pas été ouverte."
+                    )
+                    for url in resultat.sources:
+                        st.write(url)
 
         # ---- nouveaux ----
         with neufs:
@@ -1035,6 +1166,13 @@ potentiel de ressortie.
 
 **Concurrent** — comparaison à périmètre identique, et surtout les duels sur
 sujets communs, qui isolent l'effet du site de celui du sujet.
+
+**Viviers → Veille** — le seul endroit où une information vient de l'extérieur.
+Claude cherche sur le web, mais ne classe rien : chaque sujet rapporté est noté
+par le même profil de succès que les autres viviers, et l'outil relève à part
+les pages réellement consultées. Un modèle de langage peut se tromper sur un
+fait ou mal dater une annonce — le champ « risque » et la liste des sources
+servent à vérifier, pas à dispenser de vérifier.
 
 ### Limites à garder en tête
 

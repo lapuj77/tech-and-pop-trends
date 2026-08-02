@@ -39,6 +39,13 @@ from .palettes import (
     sujets_orphelins,
 )
 from .suggestions import GABARITS, Gabarit, rendement_des_gabarits, suggere_titres
+from .veille import (
+    MODELE_PAR_DEFAUT,
+    Propositions,
+    VeilleIndisponible,
+    brief_editorial,
+    cherche_sujets,
+)
 from .metrics import (
     RELANCES_MAX,
     SEUIL_CARTON,
@@ -59,6 +66,11 @@ from .metrics import (
 
 __all__ = [
     "CANAUX",
+    "MODELE_PAR_DEFAUT",
+    "Propositions",
+    "VeilleIndisponible",
+    "brief_editorial",
+    "cherche_sujets",
     "GABARITS",
     "Gabarit",
     "rendement_des_gabarits",

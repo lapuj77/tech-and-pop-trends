@@ -119,6 +119,9 @@ l'outil juge prometteur est toujours ce qui a fonctionné **ici**.
   production, sujets à demande démontrée chez un concurrent et jamais traités
   ici, et articles récents à reformuler.
 
+Un onglet **Veille** s'y ajoute, seul endroit de l'outil où une information
+vient de l'extérieur : voir plus bas.
+
 Un quatrième onglet, **Formuler**, part d'un sujet et propose des titres. Les
 tournures viennent d'un catalogue écrit à la main, mais **leur classement est
 mesuré** : chaque gabarit est confronté à l'historique du site, et ceux qui n'y
@@ -139,6 +142,49 @@ Le vivier chaud a besoin d'un accès réseau à `trends.google.com` et
 laisser croire qu'il n'y a pas d'actualité — `jdg.flux.collecte_hors_ligne`
 permet de travailler sur des flux enregistrés.
 
+## L'onglet Veille — Claude cherche, tes données classent
+
+Les flux RSS du vivier chaud ne renvoient que des titres déjà écrits par
+d'autres. L'onglet **Veille** interroge à la place l'API Claude, qui cherche
+elle-même sur le web — recherche localisée en France — et rapporte des sujets
+argumentés : ce qui s'est passé, quand, l'angle, les sources, et ce qui peut
+faire rater le coup.
+
+**Le modèle n'a pas le droit de décider qu'un sujet est bon.** Chaque
+proposition qui revient est repassée par le même `note_sujet` que les autres
+viviers : famille, procédés de titre, ressemblance aux cartons passés, tous
+mesurés sur l'historique du CMS. L'ordre affiché est celui du site. L'outil
+signale en plus, pour chaque proposition, sa ressemblance aux articles déjà
+publiés — une actualité déjà traitée ressort avec son taux de recouvrement.
+
+Le dernier volet liste **les pages réellement consultées**, relevées dans les
+résultats de recherche eux-mêmes et non dans ce que le modèle affirme avoir lu.
+Une source citée dans une proposition mais absente de cette liste n'a pas été
+ouverte.
+
+### Mise en service
+
+Une clé d'API Anthropic, créée sur `console.anthropic.com`, à coller dans la
+barre latérale. Elle n'est jamais enregistrée : elle vit le temps de la session.
+À défaut, la variable d'environnement `ANTHROPIC_API_KEY` est lue.
+
+Ce qui part dans la requête : le profil de succès mesuré, les plus gros titres
+du site et les derniers publiés. **Aucun chiffre d'audience détaillé, et rien
+des données d'un concurrent.**
+
+Le coût est à l'usage : environ un centime par recherche web, plus les jetons.
+Un relevé d'une douzaine de recherches revient à quelques dizaines de centimes,
+et l'interface affiche le coût réel après chaque appel.
+
+Le modèle par défaut est `claude-sonnet-5`. Il se change dans l'appel à
+`jdg.veille.cherche_sujets`.
+
+⚠️ **Cette partie n'a jamais été exécutée contre l'API réelle** — l'environnement
+où elle a été écrite n'a pas accès à `api.anthropic.com`. La boucle d'appel
+(recherche web, reprise après `pause_turn`, dépôt des propositions, comptage du
+coût) est vérifiée contre un serveur d'API simulé, et la forme de la requête
+correspond à la documentation. Le premier lancement réel reste à faire.
+
 ## Organisation du code
 
 | Fichier | Rôle |
@@ -150,6 +196,7 @@ permet de travailler sur des flux enregistrés.
 | `jdg/palettes.py` | profil de succès, notation d'un sujet, les trois viviers |
 | `jdg/suggestions.py` | gabarits de titre, rendement mesuré, propositions |
 | `jdg/flux.py` | lecture des flux RSS d'actualité (bibliothèque standard seule) |
+| `jdg/veille.py` | appel à l'API Claude avec recherche web, puis classement par le profil |
 
 Les fonctions de `jdg/metrics.py` s'utilisent aussi seules, dans un notebook ou
 un script :
@@ -196,6 +243,10 @@ Tous deux se règlent dans l'interface ou en tête de `jdg/metrics.py`.
 - Les deux sites d'une comparaison tournent en général sur des infrastructures
   distinctes : les niveaux absolus se comparent avec prudence, les évolutions
   dans le temps — chaque site comparé à lui-même — sont fiables.
+- L'onglet Veille dépend d'un modèle de langage : il peut se tromper sur un
+  fait, mal dater une annonce ou proposer un sujet déjà couvert par un
+  concurrent. Le champ « risque » et la liste des pages consultées sont là pour
+  qu'on puisse vérifier, pas pour dispenser de le faire.
 - Pas de détection en temps réel : la Search Console est décalée de deux à
   trois jours et les exports Marfeel sont manuels. Repérer un article qui
   décolle le jour même demande une source d'audience en direct — API Marfeel,
