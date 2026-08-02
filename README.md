@@ -12,7 +12,14 @@ trancher :
 - **que ressortir de l'archive** — quels articles anciens ont encore du
   rendement, et lesquels sont épuisés.
 
-## Installation
+## Démarrer
+
+**Sans rien connaître à Python** : double-clic sur `lancer.command` (Mac) ou
+`lancer.bat` (Windows). Le premier lancement installe ce qu'il faut, les
+suivants sont immédiats. Voir **[DEPLOIEMENT.md](DEPLOIEMENT.md)** pour la mise
+en service sur une adresse web ou un serveur interne.
+
+**En ligne de commande** :
 
 ```bash
 pip install -r requirements.txt

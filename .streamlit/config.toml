@@ -1,0 +1,17 @@
+# Réglages de l'interface. Le thème reprend les couleurs de la note de synthèse
+# pour que les deux documents se ressemblent.
+
+[theme]
+base = "light"
+primaryColor = "#2a78d6"
+backgroundColor = "#fcfcfb"
+secondaryBackgroundColor = "#f4f4f1"
+textColor = "#14150f"
+
+[server]
+# Les exports Search Console et Marfeel dépassent souvent la limite par défaut.
+maxUploadSize = 300
+headless = true
+
+[browser]
+gatherUsageStats = false
