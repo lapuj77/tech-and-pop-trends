@@ -119,6 +119,17 @@ l'outil juge prometteur est toujours ce qui a fonctionné **ici**.
   production, sujets à demande démontrée chez un concurrent et jamais traités
   ici, et articles récents à reformuler.
 
+Un quatrième onglet, **Formuler**, part d'un sujet et propose des titres. Les
+tournures viennent d'un catalogue écrit à la main, mais **leur classement est
+mesuré** : chaque gabarit est confronté à l'historique du site, et ceux qui n'y
+ont jamais rien produit ne sont pas proposés. Chaque suggestion affiche le
+succès passé dont elle s'inspire, les procédés qu'elle active et sa longueur.
+
+Les gabarits sont construits pour être sûrs grammaticalement — le sujet est
+inséré comme groupe nominal, jamais à une place qui demanderait de l'accorder.
+Le résultat reste **une amorce à retravailler**, pas un titre publiable en
+l'état.
+
 Un rendement faible ne condamne pas une famille : elle peut servir l'identité
 du site ou son audience fidèle. Le tableau dit d'où viennent les cartons, pas
 ce qu'il faut cesser d'écrire.
@@ -137,6 +148,7 @@ permet de travailler sur des flux enregistrés.
 | `jdg/metrics.py` | mesures : séries, stock/flux, relances, cartons, réservoir |
 | `jdg/marfeel.py` | exports par canal, mix, comparaison de périodes, audience fidèle |
 | `jdg/palettes.py` | profil de succès, notation d'un sujet, les trois viviers |
+| `jdg/suggestions.py` | gabarits de titre, rendement mesuré, propositions |
 | `jdg/flux.py` | lecture des flux RSS d'actualité (bibliothèque standard seule) |
 
 Les fonctions de `jdg/metrics.py` s'utilisent aussi seules, dans un notebook ou

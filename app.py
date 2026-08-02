@@ -41,10 +41,12 @@ from jdg import (
     poids_des_sections,
     profil_cartons,
     profil_succes,
+    rendement_des_gabarits,
     reservoir,
     serie_mensuelle,
     series_hebdomadaires,
     stock_et_flux,
+    suggere_titres,
     sujets_communs,
     sujets_orphelins,
     synthese_relances,
@@ -796,8 +798,9 @@ with onglets[6]:
             "pratiques générales."
         )
 
-        froide, chaude, neufs = st.tabs(
-            ["Froid — l'archive", "Chaud — l'actualité", "Nouveaux — les écarts"]
+        froide, chaude, neufs, formuler = st.tabs(
+            ["Froid — l'archive", "Chaud — l'actualité", "Nouveaux — les écarts",
+             "Formuler — les titres"]
         )
 
         # ---- froid ----
@@ -924,6 +927,82 @@ with onglets[6]:
             else:
                 st.dataframe(
                     a_reprendre.style.format({"vues": "{:,.0f}"}),
+                    width="stretch", hide_index=True,
+                )
+
+
+        # ---- formuler ----
+        with formuler:
+            st.subheader("Écrire le titre")
+            st.caption(
+                "À partir d'un sujet, l'outil propose des formulations bâties sur "
+                "les tournures qui ont réellement produit des succès ici. Ce sont "
+                "des amorces : la grammaire est sûre, la justesse ne l'est pas — "
+                "c'est au rédacteur de trancher."
+            )
+
+            # De quoi remplir le champ sans le retaper : les sujets déjà repérés.
+            propositions = [""]
+            if not articles.empty:
+                recents = articles.nlargest(15, "vues")["titre"].tolist()
+                propositions += recents
+            depart = st.selectbox(
+                "Partir d'un sujet déjà identifié (facultatif)",
+                propositions,
+                format_func=lambda t: "— saisir librement —" if not t else t[:90],
+            )
+            sujet = st.text_input(
+                "Sujet",
+                value=depart,
+                placeholder="Les nouveaux panneaux de signalisation arrivent sur les routes",
+            )
+
+            if not sujet.strip():
+                st.info("Saisis un sujet, ou choisis-en un dans la liste au-dessus.")
+            else:
+                cible = st.slider("Longueur de titre visée", 60, 130, 85, 5)
+                propositions = suggere_titres(sujet, articles, profil, n=10,
+                                              longueur_cible=cible)
+                if propositions.empty:
+                    st.write("Aucun gabarit n'a assez d'historique ici pour être proposé.")
+                else:
+                    for _, ligne in propositions.iterrows():
+                        with st.container(border=True):
+                            st.markdown(f"**{ligne['titre_proposé']}**")
+                            marque = "" if ligne["assez_long"] else "  ·  ⚠️ sous la cible"
+                            st.caption(
+                                f"{ligne['caractères']} caractères{marque}  ·  "
+                                f"gabarit « {ligne['gabarit']} », "
+                                f"{ligne['rendement_du_gabarit']:.1f}× la moyenne du site  ·  "
+                                f"{ligne['procédés_activés']}"
+                            )
+                            st.caption(
+                                f"↳ inspiré de : *{ligne['inspiré_de']}* "
+                                f"({ligne['vues_de_référence']:,.0f} vues)".replace(",", " ")
+                            )
+                    st.download_button(
+                        "Télécharger les propositions (CSV)",
+                        propositions.to_csv(index=False).encode("utf-8-sig"),
+                        "titres_proposes.csv", "text/csv",
+                    )
+
+            st.subheader("Ce que valent ces tournures, ici")
+            st.caption(
+                "Chaque gabarit est confronté à l'historique du site. Ceux qui n'y "
+                "ont jamais rien produit ne sont pas proposés, même s'ils "
+                "fonctionnent ailleurs."
+            )
+            rendements = rendement_des_gabarits(articles, profil)
+            if rendements.empty:
+                st.write("Pas assez d'articles pour mesurer les gabarits.")
+            else:
+                st.dataframe(
+                    rendements[["gabarit", "articles", "succès", "taux_pour_1000",
+                                "rendement", "exemple", "vues_exemple"]]
+                    .style.format({
+                        "taux_pour_1000": "{:.2f} ‰", "rendement": "×{:.1f}",
+                        "vues_exemple": "{:,.0f}",
+                    }),
                     width="stretch", hide_index=True,
                 )
 

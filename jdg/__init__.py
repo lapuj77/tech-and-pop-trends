@@ -38,6 +38,7 @@ from .palettes import (
     profil_succes,
     sujets_orphelins,
 )
+from .suggestions import GABARITS, Gabarit, rendement_des_gabarits, suggere_titres
 from .metrics import (
     RELANCES_MAX,
     SEUIL_CARTON,
@@ -58,6 +59,10 @@ from .metrics import (
 
 __all__ = [
     "CANAUX",
+    "GABARITS",
+    "Gabarit",
+    "rendement_des_gabarits",
+    "suggere_titres",
     "Collecte",
     "SITES",
     "audience_fidele",
