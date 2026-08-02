@@ -28,8 +28,10 @@ streamlit run app.py
 
 ## Alimenter l'outil
 
-Les fichiers se déposent dans l'interface, ou se placent dans un dossier
-`data/` à la racine (ignoré par git : ce sont des données internes).
+Les fichiers se déposent dans l'interface, ou se posent simplement **dans le
+dossier de l'application** — à la racine, à côté de `app.py`, ou dans un
+sous-dossier `data/`. Les deux emplacements sont lus au démarrage, et ni l'un
+ni l'autre n'est envoyé sur GitHub.
 
 ### Search Console
 

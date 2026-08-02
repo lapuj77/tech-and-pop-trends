@@ -5,7 +5,8 @@ et des exports d'articles du CMS : d'où vient le trafic, ce que rapportent les
 relances, et quels articles de l'archive méritent d'être ressortis.
 
 Lancement :  streamlit run app.py
-Les fichiers peuvent être déposés dans l'interface ou placés dans ./data.
+Les fichiers se déposent dans l'interface, dans ./data, ou simplement
+à côté de l'application.
 """
 
 from __future__ import annotations
@@ -87,19 +88,32 @@ def _charge_articles(chemins: tuple[str, ...]) -> pd.DataFrame:
     return charger_articles(*chemins) if chemins else pd.DataFrame()
 
 
+# On cherche les exports dans `data/` et, à défaut, à côté de l'application :
+# déposer les fichiers directement dans le dossier décompressé est le réflexe
+# naturel, et rien ne justifie de le sanctionner.
+DOSSIERS_CHERCHES = (DOSSIER_DONNEES, Path("."))
+
+
 def _depuis_dossier(motifs: list[str]) -> list[str]:
-    if not DOSSIER_DONNEES.exists():
-        return []
     trouves: list[str] = []
-    for motif in motifs:
-        trouves += [str(p) for p in sorted(DOSSIER_DONNEES.glob(motif))]
+    vus: set[str] = set()
+    for dossier in DOSSIERS_CHERCHES:
+        if not dossier.exists():
+            continue
+        for motif in motifs:
+            for chemin in sorted(dossier.glob(motif)):
+                cle = chemin.name.lower()
+                if cle in vus:
+                    continue     # même fichier rangé aux deux endroits
+                vus.add(cle)
+                trouves.append(str(chemin))
     return trouves
 
 
 st.sidebar.title("Données")
 st.sidebar.caption(
-    "Dépose les exports ici, ou place-les dans le dossier `data/` "
-    "à côté de l'application."
+    "Dépose les exports ici, ou pose-les dans le dossier de l'application — "
+    "à la racine ou dans `data/`, les deux sont lus au démarrage."
 )
 
 depots_gsc = st.sidebar.file_uploader(
