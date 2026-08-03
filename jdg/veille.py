@@ -32,7 +32,14 @@ MODELE_PAR_DEFAUT = "claude-sonnet-5"
 
 # Version de l'outil de recherche avec filtrage dynamique : le modèle filtre les
 # résultats avant qu'ils n'entrent dans le contexte. Rien d'autre à déclarer.
-OUTIL_RECHERCHE_WEB = "web_search_20260209"
+#
+# Le choix de cette version-ci plutôt que de la précédente tient à
+# `response_inclusion`. Une recherche du web renvoie beaucoup de matière, et la
+# boucle serveur s'interrompt plusieurs fois sur une requête un peu longue :
+# sans ce réglage, tout le contenu déjà rapporté repart à chaque reprise, et la
+# facture d'entrée croît en carré du nombre de tours. Mesuré sur un vrai relevé
+# avant correction : 853 000 jetons d'entrée pour huit recherches.
+OUTIL_RECHERCHE_WEB = "web_search_20260318"
 
 NOM_OUTIL_DEPOT = "deposer_propositions"
 
@@ -51,6 +58,10 @@ _TARIF_LANCEMENT = (2.00, 10.00)
 _TARIF_COURANT = (3.00, 15.00)
 _FIN_LANCEMENT = datetime.date(2026, 8, 31)
 PRIX_RECHERCHE = 0.01           # 10 $ pour 1 000 recherches
+
+# Multiplicateurs du cache, appliqués au tarif d'entrée.
+_CACHE_ECRITURE = 1.25
+_CACHE_LECTURE = 0.10
 
 
 def _tarif(jour: datetime.date | None = None) -> tuple[float, float]:
@@ -230,14 +241,24 @@ class Propositions:
     recherches: int = 0
     jetons_entree: int = 0
     jetons_sortie: int = 0
+    jetons_cache_ecriture: int = 0
+    jetons_cache_lecture: int = 0
+    tours: int = 0
     modele: str = MODELE_PAR_DEFAUT
     sources: list[str] = field(default_factory=list)
+
+    @property
+    def jetons(self) -> int:
+        return (self.jetons_entree + self.jetons_cache_ecriture
+                + self.jetons_cache_lecture + self.jetons_sortie)
 
     @property
     def cout(self) -> float:
         """Coût estimé de l'appel, en dollars."""
         entree, sortie = _tarif()
         return (self.jetons_entree * entree / 1e6
+                + self.jetons_cache_ecriture * entree * _CACHE_ECRITURE / 1e6
+                + self.jetons_cache_lecture * entree * _CACHE_LECTURE / 1e6
                 + self.jetons_sortie * sortie / 1e6
                 + self.recherches * PRIX_RECHERCHE)
 
@@ -262,15 +283,23 @@ def _client(cle: str | None):
 def cherche_sujets(profil: ProfilSucces, articles: pd.DataFrame,
                    cle_api: str | None = None, n: int = 12,
                    consigne: str = "", modele: str = MODELE_PAR_DEFAUT,
-                   max_recherches: int = 12, tours_max: int = 8) -> Propositions:
+                   max_recherches: int = 8, tours_max: int = 8,
+                   familles: list[str] | None = None,
+                   sources_completes: bool = False) -> Propositions:
     """Demande à Claude de chercher l'actualité, puis classe ce qu'il rapporte.
 
     Le classement final n'est pas celui du modèle : chaque proposition est notée
     par `note_sujet` sur l'historique du site, et la table est triée là-dessus.
+
+    `familles` restreint la recherche à certaines familles. C'est un garde-fou
+    éditorial nécessaire : livré au seul rendement mesuré, le modèle propose ce
+    qui rapporte le plus par article, qui n'est pas forcément ce que le site est.
     """
     client = _client(cle_api)
 
-    familles_connues = [nom for nom in FAMILLES if nom in profil.familles] or list(FAMILLES)
+    connues = [nom for nom in FAMILLES if nom in profil.familles] or list(FAMILLES)
+    demandees = [f for f in (familles or []) if f in FAMILLES]
+    familles_connues = demandees or connues
     aujourdhui = datetime.date.today()
 
     invite = (
@@ -278,9 +307,17 @@ def cherche_sujets(profil: ProfilSucces, articles: pd.DataFrame,
         "traiter dans les prochains jours.\n\n"
         "=== PROFIL MESURÉ DU SITE ===\n"
         + brief_editorial(profil, articles)
-        + ("\n\n=== CONSIGNE DE LA RÉDACTION EN CHEF ===\n" + consigne.strip()
-           if consigne.strip() else "")
     )
+    if demandees:
+        invite += (
+            "\n\n=== FAMILLES IMPOSÉES ===\n"
+            "La rédaction en chef restreint ce relevé aux familles suivantes. "
+            "Un sujet en dehors de cette liste est à écarter, même si son "
+            "rendement mesuré est meilleur :\n"
+            + "\n".join(f"- {f}" for f in demandees)
+        )
+    if consigne.strip():
+        invite += "\n\n=== CONSIGNE DE LA RÉDACTION EN CHEF ===\n" + consigne.strip()
 
     outils = [
         {
@@ -294,13 +331,27 @@ def cherche_sujets(profil: ProfilSucces, articles: pd.DataFrame,
                 "country": "FR",
                 "timezone": "Europe/Paris",
             },
+            # Ne pas réémettre le contenu brut des recherches déjà exploitées :
+            # c'est lui qui faisait exploser la facture d'entrée à chaque reprise.
+            # Le prix de cette économie est la traçabilité — les résultats ne
+            # revenant plus, on ne peut plus dresser la liste des pages
+            # réellement ouvertes. D'où le choix laissé à l'appelant.
+            "response_inclusion": "full" if sources_completes else "excluded",
         },
         _outil_depot(familles_connues),
     ]
 
-    messages: list[dict] = [{"role": "user", "content": invite}]
+    # Le système, les outils et le brief ne changent pas d'un tour à l'autre :
+    # mis en cache, ils reviennent à un dixième du tarif à chaque reprise.
+    systeme = [{"type": "text", "text": _SYSTEME,
+                "cache_control": {"type": "ephemeral"}}]
+    messages: list[dict] = [{"role": "user", "content": [
+        {"type": "text", "text": invite, "cache_control": {"type": "ephemeral"}},
+    ]}]
+
     depot: dict | None = None
     recherches = jetons_entree = jetons_sortie = 0
+    cache_ecriture = cache_lecture = tours = 0
     sources: list[str] = []
 
     for _ in range(tours_max):
@@ -308,15 +359,18 @@ def cherche_sujets(profil: ProfilSucces, articles: pd.DataFrame,
             model=modele,
             max_tokens=16000,
             thinking={"type": "adaptive"},
-            system=_SYSTEME,
+            system=systeme,
             tools=outils,
             messages=messages,
         ) as flux:
             reponse = flux.get_final_message()
 
+        tours += 1
         usage = reponse.usage
         jetons_entree += getattr(usage, "input_tokens", 0) or 0
         jetons_sortie += getattr(usage, "output_tokens", 0) or 0
+        cache_ecriture += getattr(usage, "cache_creation_input_tokens", 0) or 0
+        cache_lecture += getattr(usage, "cache_read_input_tokens", 0) or 0
         outil_serveur = getattr(usage, "server_tool_use", None)
         if outil_serveur is not None:
             recherches += getattr(outil_serveur, "web_search_requests", 0) or 0
@@ -368,6 +422,9 @@ def cherche_sujets(profil: ProfilSucces, articles: pd.DataFrame,
         recherches=recherches,
         jetons_entree=jetons_entree,
         jetons_sortie=jetons_sortie,
+        jetons_cache_ecriture=cache_ecriture,
+        jetons_cache_lecture=cache_lecture,
+        tours=tours,
         modele=modele,
         sources=sorted(set(sources)),
     )

@@ -157,10 +157,34 @@ mesurés sur l'historique du CMS. L'ordre affiché est celui du site. L'outil
 signale en plus, pour chaque proposition, sa ressemblance aux articles déjà
 publiés — une actualité déjà traitée ressort avec son taux de recouvrement.
 
-Le dernier volet liste **les pages réellement consultées**, relevées dans les
-résultats de recherche eux-mêmes et non dans ce que le modèle affirme avoir lu.
-Une source citée dans une proposition mais absente de cette liste n'a pas été
+### Le filtre de familles, et pourquoi il est indispensable
+
+Livré au seul rendement mesuré, le relevé part **là où le rendement est le plus
+fort, pas là où le site se trouve**. Sur les données du Journal du Geek, un
+premier essai a rendu huit sujets dont un seul de tech et aucun de pop culture —
+non par erreur, mais parce que les familles pratiques (signalisation ×12,3,
+colis ×7,7, météo ×6,6) écrasent en rendement des familles qui font pourtant
+60 % de la production.
+
+Le sélecteur de familles, en tête de l'onglet, restreint le relevé. Chaque
+famille y porte son rendement mesuré, et l'outil avertit quand la sélection ne
+contient que des familles sans carton : le relevé fonctionne, mais son
+classement interne ne repose alors plus que sur la forme du titre et la
+ressemblance, plus sur un rendement de famille.
+
+C'est un choix de rédaction en chef, pas un réglage technique. Le tableau dit
+d'où viennent les cartons ; il ne dit pas ce que le site doit être.
+
+### Tracer les sources
+
+Une case **« Relever les pages réellement ouvertes »** fait remonter les
+résultats de recherche eux-mêmes, et non ce que le modèle affirme avoir lu :
+une source citée dans une proposition mais absente de cette liste n'a pas été
 ouverte.
+
+Elle est décochée par défaut parce qu'elle coûte cher : les résultats reviennent
+alors dans la réponse et repartent à chaque reprise de la boucle. Compter
+plusieurs fois le prix d'un relevé ordinaire.
 
 ### Mise en service
 
@@ -172,18 +196,19 @@ Ce qui part dans la requête : le profil de succès mesuré, les plus gros titre
 du site et les derniers publiés. **Aucun chiffre d'audience détaillé, et rien
 des données d'un concurrent.**
 
-Le coût est à l'usage : environ un centime par recherche web, plus les jetons.
-Un relevé d'une douzaine de recherches revient à quelques dizaines de centimes,
-et l'interface affiche le coût réel après chaque appel.
+Le coût est à l'usage, et **il n'est pas négligeable** : compter quelques
+dizaines de centimes pour un relevé de huit recherches, plusieurs fois plus si
+la traçabilité des sources est cochée. L'interface affiche le coût réel après
+chaque appel, cache compris. Compter aussi **plusieurs minutes** par relevé : la
+boucle de recherche fait plusieurs allers-retours.
+
+Deux réglages tiennent la facture, tous deux dans `jdg/veille.py` :
+`response_inclusion` empêche le contenu déjà rapporté de repartir à chaque
+reprise, et le brief est mis en cache. Sans eux, un relevé de huit recherches
+consommait 853 000 jetons d'entrée pour près de deux dollars.
 
 Le modèle par défaut est `claude-sonnet-5`. Il se change dans l'appel à
 `jdg.veille.cherche_sujets`.
-
-⚠️ **Cette partie n'a jamais été exécutée contre l'API réelle** — l'environnement
-où elle a été écrite n'a pas accès à `api.anthropic.com`. La boucle d'appel
-(recherche web, reprise après `pause_turn`, dépôt des propositions, comptage du
-coût) est vérifiée contre un serveur d'API simulé, et la forme de la requête
-correspond à la documentation. Le premier lancement réel reste à faire.
 
 ## Organisation du code
 

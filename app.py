@@ -909,6 +909,31 @@ with onglets[6]:
                 "L'ordre affiché est donc celui du site, pas celui du modèle."
             )
 
+            # Le rendement mesuré seul conduit le modèle vers ce qui rapporte le
+            # plus par article, qui n'est pas forcément ce que le site est. Ce
+            # filtre est le garde-fou éditorial.
+            rendements_familles = {
+                nom: (taux / profil.taux_moyen if profil.taux_moyen else 0)
+                for nom, (taux, _, _) in profil.familles.items()
+            }
+            choisies = st.multiselect(
+                "Restreindre à certaines familles (vide = toutes)",
+                options=list(rendements_familles),
+                format_func=lambda f: f"{f}  —  ×{rendements_familles[f]:.1f}",
+                help="Le chiffre est le rendement mesuré de la famille par "
+                     "rapport à la moyenne du site.",
+            )
+            steriles = [f for f in choisies if rendements_familles[f] == 0]
+            if steriles:
+                st.warning(
+                    "Familles sans aucun carton mesuré : **"
+                    + "**, **".join(steriles)
+                    + "**. Le relevé fonctionne, mais le classement à "
+                    "l'intérieur ne repose plus que sur la forme du titre et la "
+                    "ressemblance aux succès d'autres familles — pas sur un "
+                    "rendement de famille, puisqu'il est nul."
+                )
+
             reglages, action = st.columns([3, 2])
             consigne = reglages.text_area(
                 "Consigne du jour (facultatif)",
@@ -917,12 +942,18 @@ with onglets[6]:
                             "articles.",
                 height=110,
             )
-            combien = action.slider("Nombre de sujets", 5, 25, 12)
-            recherches_max = action.slider("Recherches web maximum", 4, 25, 12)
+            combien = action.slider("Nombre de sujets", 5, 25, 10)
+            recherches_max = action.slider("Recherches web maximum", 3, 20, 8)
+            tracer = action.checkbox(
+                "Relever les pages réellement ouvertes",
+                help="Permet de vérifier les sources, mais renvoie tout le "
+                     "contenu des recherches à chaque reprise : le coût est "
+                     "plusieurs fois supérieur.",
+            )
             action.caption(
-                f"Coût : environ 1 ¢ par recherche, plus les jetons. "
-                f"Un relevé de {recherches_max} recherches revient à quelques "
-                "dizaines de centimes."
+                f"Environ {0.03 * recherches_max:.2f} $ le relevé, "
+                f"{0.25 * recherches_max:.2f} $ avec la traçabilité. "
+                "Le coût réel s'affiche après l'appel."
             )
 
             if st.button("Lancer la veille", type="primary"):
@@ -932,11 +963,15 @@ with onglets[6]:
                         "section « Veille par l'API Claude »."
                     )
                 else:
-                    with st.spinner("Claude cherche sur le web… compter une à deux minutes."):
+                    with st.spinner(
+                        "Claude cherche sur le web… compter plusieurs minutes, "
+                        "et ne pas fermer la fenêtre."
+                    ):
                         try:
                             st.session_state["veille"] = cherche_sujets(
                                 profil, articles, cle_api=cle_api, n=combien,
                                 consigne=consigne, max_recherches=recherches_max,
+                                familles=choisies, sources_completes=tracer,
                             )
                             st.session_state.pop("veille_erreur", None)
                         except VeilleIndisponible as erreur:
@@ -966,7 +1001,8 @@ with onglets[6]:
                     st.info(resultat.remarque)
                 st.caption(
                     f"{len(resultat.table)} sujets · {resultat.recherches} recherches web · "
-                    f"{resultat.jetons_entree + resultat.jetons_sortie:,} jetons · "
+                    f"{resultat.tours} allers-retours · {resultat.jetons:,} jetons "
+                    f"(dont {resultat.jetons_cache_lecture:,} relus en cache) · "
                     f"coût estimé {resultat.cout:.2f} $".replace(",", " ")
                 )
 
@@ -1001,14 +1037,22 @@ with onglets[6]:
                     resultat.table.to_csv(index=False).encode("utf-8-sig"),
                     "veille_claude.csv", "text/csv",
                 )
-                with st.expander(f"Les {len(resultat.sources)} pages réellement consultées"):
+                if resultat.sources:
+                    with st.expander(f"Les {len(resultat.sources)} pages réellement ouvertes"):
+                        st.caption(
+                            "Relevé depuis les résultats de recherche, pas depuis ce "
+                            "que le modèle affirme avoir lu. Une source citée plus haut "
+                            "et absente d'ici n'a pas été ouverte."
+                        )
+                        for url in resultat.sources:
+                            st.write(url)
+                else:
                     st.caption(
-                        "Relevé depuis les résultats de recherche, pas depuis ce "
-                        "que le modèle affirme avoir lu. Une source citée plus haut "
-                        "et absente d'ici n'a pas été ouverte."
+                        "Liste des pages ouvertes non relevée — cocher « Relever "
+                        "les pages réellement ouvertes » avant l'appel. Les "
+                        "sources affichées ci-dessus sont alors celles que le "
+                        "modèle déclare, sans contre-vérification."
                     )
-                    for url in resultat.sources:
-                        st.write(url)
 
         # ---- nouveaux ----
         with neufs:
