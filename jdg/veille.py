@@ -33,12 +33,12 @@ MODELE_PAR_DEFAUT = "claude-sonnet-5"
 # Version de l'outil de recherche avec filtrage dynamique : le modèle filtre les
 # résultats avant qu'ils n'entrent dans le contexte. Rien d'autre à déclarer.
 #
-# Le choix de cette version-ci plutôt que de la précédente tient à
-# `response_inclusion`. Une recherche du web renvoie beaucoup de matière, et la
-# boucle serveur s'interrompt plusieurs fois sur une requête un peu longue :
-# sans ce réglage, tout le contenu déjà rapporté repart à chaque reprise, et la
-# facture d'entrée croît en carré du nombre de tours. Mesuré sur un vrai relevé
-# avant correction : 853 000 jetons d'entrée pour huit recherches.
+# Cette version accepte aussi `response_inclusion: "excluded"`, qui retire de la
+# réponse le contenu des recherches déjà exploitées. C'est tentant — c'est lui
+# qui pèse — mais **incompatible avec la reprise après `pause_turn`** : la
+# conversation qu'on renvoie ne contient alors plus ce que le modèle a trouvé,
+# il recommence à chercher et n'aboutit jamais. Essayé, mesuré, écarté. La
+# facture se tient par le cache (voir `_pose_cache`), pas par l'amnésie.
 OUTIL_RECHERCHE_WEB = "web_search_20260318"
 
 NOM_OUTIL_DEPOT = "deposer_propositions"
@@ -284,8 +284,7 @@ def cherche_sujets(profil: ProfilSucces, articles: pd.DataFrame,
                    cle_api: str | None = None, n: int = 12,
                    consigne: str = "", modele: str = MODELE_PAR_DEFAUT,
                    max_recherches: int = 8, tours_max: int = 8,
-                   familles: list[str] | None = None,
-                   sources_completes: bool = False) -> Propositions:
+                   familles: list[str] | None = None) -> Propositions:
     """Demande à Claude de chercher l'actualité, puis classe ce qu'il rapporte.
 
     Le classement final n'est pas celui du modèle : chaque proposition est notée
@@ -331,12 +330,6 @@ def cherche_sujets(profil: ProfilSucces, articles: pd.DataFrame,
                 "country": "FR",
                 "timezone": "Europe/Paris",
             },
-            # Ne pas réémettre le contenu brut des recherches déjà exploitées :
-            # c'est lui qui faisait exploser la facture d'entrée à chaque reprise.
-            # Le prix de cette économie est la traçabilité — les résultats ne
-            # revenant plus, on ne peut plus dresser la liste des pages
-            # réellement ouvertes. D'où le choix laissé à l'appelant.
-            "response_inclusion": "full" if sources_completes else "excluded",
         },
         _outil_depot(familles_connues),
     ]
@@ -381,16 +374,18 @@ def cherche_sujets(profil: ProfilSucces, articles: pd.DataFrame,
                 "Le modèle a refusé de répondre. Reformuler la consigne."
             )
 
-        # Boucle serveur interrompue : on renvoie le tour tel quel, sans rien ajouter.
+        # Boucle serveur interrompue : on renvoie le tour tel quel, sans rien
+        # ajouter. Le contenu des recherches doit repartir intact — c'est lui
+        # que le modèle relit pour poursuivre.
         if reponse.stop_reason == "pause_turn":
-            messages.append({"role": "assistant", "content": reponse.content})
+            _pose_cache(messages, reponse.content)
             continue
 
         appels = [b for b in reponse.content if getattr(b, "type", None) == "tool_use"]
         if not appels:
             break
 
-        messages.append({"role": "assistant", "content": reponse.content})
+        _pose_cache(messages, reponse.content)
         resultats = []
         for appel in appels:
             if appel.name == NOM_OUTIL_DEPOT:
@@ -408,11 +403,23 @@ def cherche_sujets(profil: ProfilSucces, articles: pd.DataFrame,
             break
         messages.append({"role": "user", "content": resultats})
 
+    # Les tours sont épuisés sans dépôt : plutôt que de jeter tout ce qui a été
+    # cherché — et payé —, on redemande le dépôt en forçant l'outil.
+    if depot is None and tours:
+        reponse, depot = _depot_force(client, modele, systeme, outils, messages)
+        if reponse is not None:
+            tours += 1
+            usage = reponse.usage
+            jetons_entree += getattr(usage, "input_tokens", 0) or 0
+            jetons_sortie += getattr(usage, "output_tokens", 0) or 0
+            cache_ecriture += getattr(usage, "cache_creation_input_tokens", 0) or 0
+            cache_lecture += getattr(usage, "cache_read_input_tokens", 0) or 0
+
     if depot is None:
         raise VeilleIndisponible(
-            "Le modèle n'a rien déposé. C'est en général une recherche web "
-            "infructueuse ou une consigne trop restrictive — réessayer en "
-            "élargissant."
+            "Le modèle n'a rien déposé, même en le lui imposant. C'est en "
+            "général une recherche web infructueuse ou une sélection de "
+            "familles trop étroite — réessayer en élargissant."
         )
 
     table = _classe(depot.get("propositions") or [], profil, articles)
@@ -428,6 +435,65 @@ def cherche_sujets(profil: ProfilSucces, articles: pd.DataFrame,
         modele=modele,
         sources=sorted(set(sources)),
     )
+
+
+# Types de blocs sur lesquels une borne de cache est acceptée. Un bloc de
+# réflexion n'en fait pas partie, d'où la vérification plutôt qu'un « dernier
+# bloc » aveugle.
+_BLOCS_CACHABLES = {"text", "tool_use", "server_tool_use", "web_search_tool_result",
+                    "tool_result", "document", "image"}
+
+
+def _pose_cache(messages: list[dict], contenu) -> None:
+    """Ajoute le tour du modèle à la conversation, borne de cache comprise.
+
+    La conversation grossit à chaque reprise de la boucle serveur, et tout ce
+    qui précède repart intégralement. Sans borne de cache, l'entrée croît en
+    carré du nombre de tours — mesuré à 853 000 jetons sur un relevé de huit
+    recherches. Avec, le préfixe déjà vu revient à un dixième du tarif.
+
+    L'API n'accepte que quatre bornes : celle du tour précédent est donc retirée
+    avant d'en poser une nouvelle. Seul le brief initial garde la sienne.
+    """
+    for message in messages[1:]:
+        for bloc in message.get("content", []):
+            if isinstance(bloc, dict):
+                bloc.pop("cache_control", None)
+
+    blocs = [b.model_dump(mode="json", exclude_none=True) for b in contenu]
+    for bloc in reversed(blocs):
+        if bloc.get("type") in _BLOCS_CACHABLES:
+            bloc["cache_control"] = {"type": "ephemeral"}
+            break
+    messages.append({"role": "assistant", "content": blocs})
+
+
+def _depot_force(client, modele: str, systeme, outils, messages: list[dict]):
+    """Dernier appel : impose l'outil de dépôt et renonce à chercher davantage.
+
+    Sert quand les tours sont épuisés alors que le modèle cherche encore. Sans
+    ce filet, un relevé de plusieurs minutes — et de plusieurs dizaines de
+    centimes — se termine sur une erreur et rien à montrer.
+
+    La réflexion est désactivée : elle n'est pas compatible avec un outil imposé.
+    """
+    suite = messages + [{"role": "user", "content": (
+        "Arrête de chercher. Dépose maintenant, avec l'outil, les sujets que tu "
+        "as déjà vérifiés — même s'ils sont moins nombreux que demandé. Ne "
+        "propose rien que tes recherches n'aient établi."
+    )}]
+    try:
+        reponse = client.messages.create(
+            model=modele, max_tokens=8000, system=systeme, tools=outils,
+            tool_choice={"type": "tool", "name": NOM_OUTIL_DEPOT},
+            messages=suite,
+        )
+    except Exception:
+        return None, None
+    for bloc in reponse.content:
+        if getattr(bloc, "type", None) == "tool_use" and bloc.name == NOM_OUTIL_DEPOT:
+            return reponse, dict(bloc.input)
+    return reponse, None
 
 
 def _urls_consultees(contenu) -> list[str]:

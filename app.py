@@ -944,16 +944,9 @@ with onglets[6]:
             )
             combien = action.slider("Nombre de sujets", 5, 25, 10)
             recherches_max = action.slider("Recherches web maximum", 3, 20, 8)
-            tracer = action.checkbox(
-                "Relever les pages réellement ouvertes",
-                help="Permet de vérifier les sources, mais renvoie tout le "
-                     "contenu des recherches à chaque reprise : le coût est "
-                     "plusieurs fois supérieur.",
-            )
             action.caption(
-                f"Environ {0.03 * recherches_max:.2f} $ le relevé, "
-                f"{0.25 * recherches_max:.2f} $ avec la traçabilité. "
-                "Le coût réel s'affiche après l'appel."
+                "Compter quelques dizaines de centimes et plusieurs minutes "
+                "par relevé. Le coût réel s'affiche après l'appel."
             )
 
             if st.button("Lancer la veille", type="primary"):
@@ -971,7 +964,7 @@ with onglets[6]:
                             st.session_state["veille"] = cherche_sujets(
                                 profil, articles, cle_api=cle_api, n=combien,
                                 consigne=consigne, max_recherches=recherches_max,
-                                familles=choisies, sources_completes=tracer,
+                                familles=choisies,
                             )
                             st.session_state.pop("veille_erreur", None)
                         except VeilleIndisponible as erreur:
@@ -1048,10 +1041,9 @@ with onglets[6]:
                             st.write(url)
                 else:
                     st.caption(
-                        "Liste des pages ouvertes non relevée — cocher « Relever "
-                        "les pages réellement ouvertes » avant l'appel. Les "
-                        "sources affichées ci-dessus sont alors celles que le "
-                        "modèle déclare, sans contre-vérification."
+                        "Aucune page relevée dans les résultats de recherche : "
+                        "les sources affichées ci-dessus sont celles que le "
+                        "modèle déclare, sans contre-vérification possible."
                     )
 
         # ---- nouveaux ----
