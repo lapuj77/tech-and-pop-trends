@@ -20,7 +20,7 @@ from dataclasses import dataclass
 
 import pandas as pd
 
-from .palettes import MARQUEURS, ProfilSucces, note_sujet
+from .palettes import LONGUEUR_PLAFOND, LONGUEUR_PLANCHER, MARQUEURS, ProfilSucces, note_sujet
 
 
 @dataclass(frozen=True)
@@ -172,7 +172,7 @@ def _nettoie_sujet(sujet: str) -> str:
 
 
 def suggere_titres(sujet: str, articles: pd.DataFrame, profil: ProfilSucces,
-                   n: int = 8, longueur_cible: int = 85) -> pd.DataFrame:
+                   n: int = 8, longueur_cible: int = LONGUEUR_PLANCHER) -> pd.DataFrame:
     """Propose des formulations pour un sujet, classées par rendement mesuré.
 
     Chaque proposition indique le gabarit d'origine, le succès passé qui lui sert
@@ -204,6 +204,9 @@ def suggere_titres(sujet: str, articles: pd.DataFrame, profil: ProfilSucces,
             "titre_proposé": titre,
             "caractères": len(titre),
             "assez_long": len(titre) >= longueur_cible,
+            # Au-delà, plus aucun succès du site : le signaler vaut mieux que de
+            # laisser croire qu'allonger est toujours bon.
+            "trop_long": len(titre) > LONGUEUR_PLAFOND,
             "gabarit": gabarit.nom,
             "rendement_du_gabarit": mesure["rendement"],
             "procédés_activés": " · ".join(procedes) or "—",

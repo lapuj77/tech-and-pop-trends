@@ -58,6 +58,22 @@ MARQUEURS: dict[str, str] = {
     "structure « sujet : promesse »": r"\s:\s",
 }
 
+# Longueur de titre. Ces deux bornes ne sont pas des conventions de rédaction web,
+# elles sont relevées sur l'historique du site — 17 149 articles, 43 succès :
+#
+#   moins de 70 caractères   7 777 art.   1,29 ‰   ×0,5
+#   70 à 85                  5 883 art.   2,55 ‰   ×1,0
+#   85 à 100                 2 390 art.   5,02 ‰   ×2,0
+#   100 à 125                  986 art.   6,09 ‰   ×2,4
+#   plus de 125                113 art.   0,00 ‰   ×0,0
+#
+# L'effet est continu jusqu'à ~100 caractères, puis s'aplatit. Le plafond n'est
+# pas un optimum mesuré : c'est le constat qu'aucun succès du site ne dépasse
+# 124 caractères, sur un échantillon (113 articles) trop mince pour conclure
+# davantage. On le signale, on ne l'impose pas.
+LONGUEUR_PLANCHER = 85
+LONGUEUR_PLAFOND = 124
+
 _MOTS_VIDES = set(
     """voici cette votre pour dans avec vous nouvelle nouveau sont plus tout tous cest quoi
     elle bien fait faire peut mais leur sans deja encore aussi comme les des une par sur que
@@ -240,8 +256,15 @@ def note_sujet(titre: str, profil: ProfilSucces) -> Note:
         elif not present and effet >= 2.0:
             conseils.append(f"ajouter « {nom} » (×{effet:.1f} ici)")
 
-    if len(titre) < 85:
-        conseils.append(f"allonger le titre : {len(titre)} caractères, viser 85 et plus")
+    if len(titre) < LONGUEUR_PLANCHER:
+        conseils.append(
+            f"allonger le titre : {len(titre)} caractères, viser {LONGUEUR_PLANCHER} et plus"
+        )
+    elif len(titre) > LONGUEUR_PLAFOND:
+        conseils.append(
+            f"raccourcir le titre : {len(titre)} caractères, aucun succès du site "
+            f"ne dépasse {LONGUEUR_PLAFOND}"
+        )
 
     if profil.creneaux:
         meilleur = max(profil.creneaux, key=profil.creneaux.get)

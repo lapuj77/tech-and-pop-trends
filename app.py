@@ -1128,6 +1128,12 @@ with onglets[6]:
                 st.info("Saisis un sujet, ou choisis-en un dans la liste au-dessus.")
             else:
                 cible = st.slider("Longueur de titre visée", 60, 130, 85, 5)
+                st.caption(
+                    "Mesuré ici : sous 70 caractères le rendement tombe à la "
+                    "moitié de la moyenne, entre 85 et 100 il double, entre 100 "
+                    "et 125 il fait ×2,4. Aucun succès du site ne dépasse "
+                    "124 caractères."
+                )
                 propositions = suggere_titres(sujet, articles, profil, n=10,
                                               longueur_cible=cible)
                 if propositions.empty:
@@ -1136,7 +1142,12 @@ with onglets[6]:
                     for _, ligne in propositions.iterrows():
                         with st.container(border=True):
                             st.markdown(f"**{ligne['titre_proposé']}**")
-                            marque = "" if ligne["assez_long"] else "  ·  ⚠️ sous la cible"
+                            if ligne["trop_long"]:
+                                marque = "  ·  ⚠️ au-delà de tout succès mesuré"
+                            elif not ligne["assez_long"]:
+                                marque = "  ·  ⚠️ sous la cible"
+                            else:
+                                marque = ""
                             st.caption(
                                 f"{ligne['caractères']} caractères{marque}  ·  "
                                 f"gabarit « {ligne['gabarit']} », "
